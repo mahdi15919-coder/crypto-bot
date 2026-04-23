@@ -15,8 +15,6 @@ const panelBody = document.getElementById("panelBody");
 const showPricesBtn = document.getElementById("showPricesBtn");
 const buySellBtn = document.getElementById("buySellBtn");
 const showOrdersBtn = document.getElementById("showOrdersBtn");
-const showBanksBtn = document.getElementById("showBanksBtn");
-const showWalletsBtn = document.getElementById("showWalletsBtn");
 const adminPanelBtn = document.getElementById("adminPanelBtn");
 const homeBtn = document.getElementById("homeBtn");
 
@@ -64,7 +62,6 @@ async function postJSON(path, payload) {
     },
     body: JSON.stringify(payload)
   });
-
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || "خطا");
   return data;
@@ -73,10 +70,7 @@ async function postJSON(path, payload) {
 function initUi() {
   welcomeText.textContent = `سلام ${currentUserName()}، پنل آماده‌ست.`;
   userBadge.textContent = isAdmin() ? "ADMIN" : "USER";
-
-  if (!isAdmin()) {
-    adminPanelBtn.classList.add("hidden");
-  }
+  if (!isAdmin()) adminPanelBtn.classList.add("hidden");
 }
 
 async function loadHome() {
@@ -95,7 +89,7 @@ async function loadHome() {
           <div class="value">${formatIrr(data.usdt_prices.buy_from_user)} ریال</div>
         </div>
         <div class="stat-card">
-          <div class="label">تعداد حساب‌های بانکی</div>
+          <div class="label">تعداد بانک‌ها</div>
           <div class="value">${data.bank_count}</div>
         </div>
         <div class="stat-card">
@@ -106,7 +100,7 @@ async function loadHome() {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در بارگذاری اطلاعات");
+    setPanel("خطا", e.message || "خطا");
   }
 }
 
@@ -126,7 +120,7 @@ showPricesBtn.addEventListener("click", async () => {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در دریافت قیمت");
+    setPanel("خطا", e.message || "خطا");
   }
 });
 
@@ -164,19 +158,15 @@ window.selectSide = function(side) {
 
 window.selectAsset = async function(asset) {
   orderData.asset_code = asset;
-
   try {
     const data = await getJSON(`/networks?asset_code=${asset}`);
     const buttons = data.networks
       .map(n => `<button class="card small" onclick="selectNetwork('${n}')">${n}</button>`)
       .join("");
 
-    setPanel(
-      "انتخاب شبکه",
-      `<div class="list-item"><div class="grid-actions">${buttons}</div></div>`
-    );
+    setPanel("انتخاب شبکه", `<div class="list-item"><div class="grid-actions">${buttons}</div></div>`);
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در دریافت شبکه‌ها");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
@@ -198,7 +188,6 @@ window.selectNetwork = function(network) {
 
 window.getQuote = async function() {
   const amount = parseFloat(document.getElementById("amountInput").value);
-
   if (!amount || amount <= 0) {
     alert("مقدار معتبر نیست");
     return;
@@ -214,8 +203,6 @@ window.getQuote = async function() {
       amount: orderData.amount
     });
 
-    orderData.quote = quote;
-
     setPanel(
       "پیش‌نمایش سفارش",
       `
@@ -228,6 +215,7 @@ window.getQuote = async function() {
         <strong>کارمزد:</strong> ${quote.fee_amount} ${quote.fee_asset}<br>
         <strong>مبلغ نهایی:</strong> ${formatIrr(quote.total_irr)} ریال
       </div>
+
       <div class="list-item">
         <div class="form-group">
           <label>آدرس مقصد / مبدا</label>
@@ -238,7 +226,7 @@ window.getQuote = async function() {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در محاسبه قیمت");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
@@ -250,9 +238,8 @@ window.submitOrder = async function() {
     alert("آدرس را وارد کن");
     return;
   }
-
   if (!userId) {
-    alert("شناسه کاربر تلگرام پیدا نشد");
+    alert("شناسه کاربر پیدا نشد");
     return;
   }
 
@@ -266,24 +253,93 @@ window.submitOrder = async function() {
       wallet_address: walletAddress
     });
 
-    const order = data.order;
-
-    if (order.side === "buy") {
-      await showBankSelection(order.order_id);
-    } else {
-      await showOrderWallet(order.order_id);
-    }
+    setPanel(
+      "سفارش ثبت شد",
+      `
+      <div class="list-item">
+        ✅ سفارش ${data.order.order_id} ثبت شد.
+        <br><br>
+        ⏳ منتظر تأیید ادمین باشید.
+      </div>
+      `
+    );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در ثبت سفارش");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
-async function showBankSelection(orderId) {
+showOrdersBtn.addEventListener("click", loadUserOrders);
+
+async function loadUserOrders() {
+  try {
+    const userId = currentUserId();
+    const orders = await getJSON(`/orders?user_id=${userId}`);
+
+    if (!orders.length) {
+      setPanel("سفارش‌های من", "هنوز سفارشی نداری");
+      return;
+    }
+
+    const html = orders.slice().reverse().map(o => {
+      let actionHtml = "";
+
+      if (o.status === "pending_admin") {
+        actionHtml = "⏳ منتظر تأیید ادمین";
+      } else if (o.status === "waiting_bank") {
+        actionHtml = `<button class="card small" onclick="showBankSelection('${o.order_id}')">🏦 انتخاب بانک</button>`;
+      } else if (o.status === "waiting_receipt") {
+        actionHtml = `
+          <div class="form-group"><label>آپلود رسید</label><input id="file-${o.order_id}" type="file" accept="image/*"></div>
+          <button class="card small green" onclick="uploadReceipt('${o.order_id}')">📤 ارسال رسید</button>
+        `;
+      } else if (o.status === "receipt_submitted") {
+        actionHtml = `📨 رسید ثبت شد، منتظر بررسی ادمین`;
+      } else if (o.status === "wallet_ready" || o.status === "waiting_txid") {
+        actionHtml = `
+          <button class="card small" onclick="showOrderWallet('${o.order_id}')">👛 نمایش ولت</button>
+          <div class="form-group" style="margin-top:12px;"><label>TXID</label><input id="tx-${o.order_id}" type="text" placeholder="TXID"></div>
+          <button class="card small orange" onclick="submitTx('${o.order_id}')">🔗 ثبت TXID</button>
+        `;
+      } else if (o.status === "txid_submitted") {
+        actionHtml = `📨 TXID ثبت شد، منتظر بررسی ادمین`;
+      } else if (o.status === "paid") {
+        actionHtml = o.side === "buy" ? "💰 پرداخت تأیید شد، منتظر ارسال ارز" : "💰 واریز شما تأیید شد، منتظر پرداخت ریالی";
+      } else if (o.status === "sent") {
+        actionHtml = "🚀 ارز ارسال شد";
+      } else if (o.status === "done") {
+        actionHtml = "✅ سفارش تکمیل شد";
+      } else if (o.status === "rejected") {
+        actionHtml = "❌ سفارش رد شد";
+      }
+
+      return `
+        <div class="list-item">
+          <strong>کد سفارش:</strong> ${o.order_id}<br>
+          <strong>نوع:</strong> ${o.side === "buy" ? "خرید" : "فروش"}<br>
+          <strong>ارز:</strong> ${o.asset_code}<br>
+          <strong>شبکه:</strong> ${o.network}<br>
+          <strong>مقدار:</strong> ${o.amount}<br>
+          <strong>مبلغ:</strong> ${formatIrr(o.total_irr)} ریال<br>
+          <strong>وضعیت:</strong> ${o.status}<br>
+          ${o.receipt_url ? `<strong>رسید:</strong> <a href="${API_BASE}${o.receipt_url}" target="_blank">مشاهده</a><br>` : ""}
+          ${o.txid ? `<strong>TXID:</strong> ${o.txid}<br>` : ""}
+          <br>
+          ${actionHtml}
+        </div>
+      `;
+    }).join("");
+
+    setPanel("سفارش‌های من", html);
+  } catch (e) {
+    setPanel("خطا", e.message || "خطا");
+  }
+}
+
+window.showBankSelection = async function(orderId) {
   try {
     const banks = await getJSON("/banks");
-
     if (!banks.length) {
-      setPanel("ثبت شد", `<div class="list-item">✅ سفارش ثبت شد<br><br⚠️ هیچ حساب بانکی ثبت نشده.</div>`);
+      setPanel("انتخاب بانک", "هیچ حساب بانکی ثبت نشده");
       return;
     }
 
@@ -296,159 +352,112 @@ async function showBankSelection(orderId) {
       `
     ).join("");
 
-    setPanel(
-      "انتخاب حساب بانکی",
-      `
-      <div class="list-item">
-        یکی از حساب‌های بانکی را انتخاب کن.<br>
-        ترجیحاً از همان بانک و حساب‌به‌حساب واریز کن.
-      </div>
-      ${html}
-      `
-    );
+    setPanel("انتخاب بانک", html);
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در دریافت بانک‌ها");
+    setPanel("خطا", e.message || "خطا");
   }
-}
+};
 
 window.selectBankForOrder = async function(orderId, bankId) {
   try {
-    const data = await postJSON(`/order/${orderId}/select-bank`, { bank_id: bankId });
-    const bank = data.bank;
+    const data = await postJSON(`/order/${orderId}/select-bank`, {
+      user_id: currentUserId(),
+      bank_id: bankId
+    });
 
+    const bank = data.bank;
     setPanel(
-      "اطلاعات پرداخت",
+      "اطلاعات بانکی",
       `
       <div class="list-item">
-        <strong>کد سفارش:</strong> ${orderId}<br>
         <strong>بانک:</strong> ${bank.bank_name}<br>
         <strong>صاحب حساب:</strong> ${bank.owner_name}<br>
         <strong>شماره کارت:</strong> ${bank.card_number}<br>
         <strong>شماره حساب:</strong> ${bank.account_number}<br>
         <strong>شبا:</strong> ${bank.sheba}<br><br>
-
         <div class="grid-actions">
           <button class="card small" onclick="copyText('${bank.card_number}')">کپی کارت</button>
           <button class="card small" onclick="copyText('${bank.account_number}')">کپی حساب</button>
           <button class="card small" onclick="copyText('${bank.sheba}')">کپی شبا</button>
           <button class="card small" onclick="copyText('${bank.owner_name}')">کپی نام</button>
         </div>
+        <br>
+        حالا از بخش «سفارش‌های من» رسید را ارسال کن.
       </div>
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در انتخاب بانک");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
-async function showOrderWallet(orderId) {
+window.uploadReceipt = async function(orderId) {
+  const input = document.getElementById(`file-${orderId}`);
+  if (!input.files || !input.files[0]) {
+    alert("فایل را انتخاب کن");
+    return;
+  }
+
+  const file = input.files[0];
+  const reader = new FileReader();
+
+  reader.onload = async function(event) {
+    try {
+      await postJSON(`/order/${orderId}/upload-receipt`, {
+        user_id: currentUserId(),
+        image_base64: event.target.result
+      });
+      alert("رسید ثبت شد");
+      await loadUserOrders();
+    } catch (e) {
+      alert(e.message || "خطا");
+    }
+  };
+
+  reader.readAsDataURL(file);
+};
+
+window.showOrderWallet = async function(orderId) {
   try {
     const data = await getJSON(`/order/${orderId}/wallet`);
     const wallet = data.wallet;
 
     setPanel(
-      "آدرس ولت",
+      "ولت مقصد",
       `
       <div class="list-item">
-        <strong>کد سفارش:</strong> ${orderId}<br>
         <strong>ارز:</strong> ${wallet.asset_code}<br>
         <strong>شبکه:</strong> ${wallet.network}<br>
         <strong>آدرس:</strong> ${wallet.address}<br><br>
-        <button class="card small" onclick="copyText('${wallet.address}')">کپی آدرس ولت</button>
+        <button class="card small" onclick="copyText('${wallet.address}')">کپی آدرس</button>
+        <br><br>
+        بعد از انتقال، از بخش سفارش‌های من TXID را ثبت کن.
       </div>
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "ولت مناسب پیدا نشد");
+    setPanel("خطا", e.message || "خطا");
   }
-}
+};
 
-showOrdersBtn.addEventListener("click", async () => {
+window.submitTx = async function(orderId) {
+  const txid = document.getElementById(`tx-${orderId}`).value.trim();
+  if (!txid) {
+    alert("TXID را وارد کن");
+    return;
+  }
+
   try {
-    const userId = currentUserId();
-    const orders = await getJSON(`/orders?user_id=${userId}`);
-
-    if (!orders.length) {
-      setPanel("سفارش‌های من", "هنوز سفارشی ثبت نشده");
-      return;
-    }
-
-    const html = orders.slice().reverse().map(
-      o => `
-      <div class="list-item">
-        <strong>کد سفارش:</strong> ${o.order_id}<br>
-        <strong>نوع:</strong> ${o.side === "buy" ? "خرید" : "فروش"}<br>
-        <strong>ارز:</strong> ${o.asset_code}<br>
-        <strong>شبکه:</strong> ${o.network}<br>
-        <strong>مقدار:</strong> ${o.amount}<br>
-        <strong>مبلغ:</strong> ${formatIrr(o.total_irr)} ریال<br>
-        <strong>وضعیت:</strong> ${o.status}
-      </div>
-      `
-    ).join("");
-
-    setPanel("سفارش‌های من", html);
+    await postJSON(`/order/${orderId}/submit-txid`, {
+      user_id: currentUserId(),
+      txid
+    });
+    alert("TXID ثبت شد");
+    await loadUserOrders();
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در دریافت سفارش‌ها");
+    alert(e.message || "خطا");
   }
-});
-
-showBanksBtn.addEventListener("click", async () => {
-  try {
-    const banks = await getJSON("/banks");
-
-    if (!banks.length) {
-      setPanel("حساب‌های بانکی", "هیچ حساب بانکی ثبت نشده");
-      return;
-    }
-
-    const html = banks.map(
-      b => `
-      <div class="list-item">
-        <strong>بانک:</strong> ${b.bank_name}<br>
-        <strong>صاحب حساب:</strong> ${b.owner_name}<br>
-        <strong>کارت:</strong> ${b.card_number}<br>
-        <strong>شبا:</strong> ${b.sheba}<br>
-        <strong>حساب:</strong> ${b.account_number}<br><br>
-        <div class="grid-actions">
-          <button class="card small" onclick="copyText('${b.card_number}')">کپی کارت</button>
-          <button class="card small" onclick="copyText('${b.sheba}')">کپی شبا</button>
-        </div>
-      </div>
-      `
-    ).join("");
-
-    setPanel("حساب‌های بانکی", html);
-  } catch (e) {
-    setPanel("خطا", e.message || "خطا در دریافت حساب‌های بانکی");
-  }
-});
-
-showWalletsBtn.addEventListener("click", async () => {
-  try {
-    const wallets = await getJSON("/wallets");
-
-    if (!wallets.length) {
-      setPanel("ولت‌ها", "هیچ ولتی ثبت نشده");
-      return;
-    }
-
-    const html = wallets.map(
-      w => `
-      <div class="list-item">
-        <strong>ارز:</strong> ${w.asset_code}<br>
-        <strong>شبکه:</strong> ${w.network}<br>
-        <strong>آدرس:</strong> ${w.address}<br><br>
-        <button class="card small" onclick="copyText('${w.address}')">کپی آدرس</button>
-      </div>
-      `
-    ).join("");
-
-    setPanel("ولت‌ها", html);
-  } catch (e) {
-    setPanel("خطا", e.message || "خطا در دریافت ولت‌ها");
-  }
-});
+};
 
 adminPanelBtn.addEventListener("click", loadAdminHome);
 
@@ -470,7 +479,7 @@ async function loadAdminHome() {
           <div class="value">${summary.order_count}</div>
         </div>
         <div class="stat-card">
-          <div class="label">سفارش‌های فعال</div>
+          <div class="label">فعال</div>
           <div class="value">${summary.active_order_count}</div>
         </div>
         <div class="stat-card">
@@ -481,14 +490,6 @@ async function loadAdminHome() {
           <div class="label">فروش‌های done</div>
           <div class="value">${formatIrr(summary.sell_total_irr)} ریال</div>
         </div>
-      </div>
-
-      <div class="list-item">
-        <strong>موجودی:</strong><br>
-        USDT: ${summary.inventory.USDT ?? 0}<br>
-        TRX: ${summary.inventory.TRX ?? 0}<br>
-        TON: ${summary.inventory.TON ?? 0}<br>
-        BNB: ${summary.inventory.BNB ?? 0}
       </div>
 
       <div class="grid-actions three">
@@ -502,21 +503,41 @@ async function loadAdminHome() {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در پنل ادمین");
+    setPanel("خطا", e.message || "خطا");
   }
 }
 
-window.adminLoadOrders = async function() {
+window.adminLoadOrders = async function(status = "", query = "") {
   try {
-    const orders = await getJSON(`/admin/orders?admin_id=${currentUserId()}`);
+    let path = `/admin/orders?admin_id=${currentUserId()}`;
+    if (status) path += `&status=${encodeURIComponent(status)}`;
+    if (query) path += `&order_id=${encodeURIComponent(query)}`;
+
+    const orders = await getJSON(path);
+
+    const filters = `
+      <div class="list-item">
+        <div class="form-group">
+          <label>جست‌وجو با کد سفارش</label>
+          <input id="orderSearch" type="text" placeholder="مثلاً ABC123" value="${query || ""}">
+        </div>
+        <div class="grid-actions three">
+          <button class="card small" onclick="adminLoadOrders('', document.getElementById('orderSearch').value.trim())">همه</button>
+          <button class="card small" onclick="adminLoadOrders('pending_admin', document.getElementById('orderSearch').value.trim())">pending</button>
+          <button class="card small" onclick="adminLoadOrders('receipt_submitted', document.getElementById('orderSearch').value.trim())">receipt</button>
+          <button class="card small" onclick="adminLoadOrders('txid_submitted', document.getElementById('orderSearch').value.trim())">txid</button>
+          <button class="card small" onclick="adminLoadOrders('done', document.getElementById('orderSearch').value.trim())">done</button>
+          <button class="card small" onclick="adminLoadOrders('rejected', document.getElementById('orderSearch').value.trim())">rejected</button>
+        </div>
+      </div>
+    `;
 
     if (!orders.length) {
-      setPanel("سفارش‌ها", "سفارشی وجود ندارد");
+      setPanel("سفارش‌ها", filters + `<div class="list-item">سفارشی پیدا نشد</div>`);
       return;
     }
 
-    const html = orders.map(
-      o => `
+    const html = orders.map(o => `
       <div class="list-item">
         <strong>کد سفارش:</strong> ${o.order_id}<br>
         <strong>نوع:</strong> ${o.side === "buy" ? "خرید" : "فروش"}<br>
@@ -525,29 +546,80 @@ window.adminLoadOrders = async function() {
         <strong>مقدار:</strong> ${o.amount}<br>
         <strong>مبلغ:</strong> ${formatIrr(o.total_irr)} ریال<br>
         <strong>وضعیت:</strong> ${o.status}<br>
-        <strong>TXID:</strong> ${o.txid || "-"}<br><br>
+        <strong>TXID:</strong> ${o.txid || "-"}<br>
+        <strong>رسید:</strong> ${o.receipt_url ? `<a href="${API_BASE}${o.receipt_url}" target="_blank">مشاهده</a>` : "ندارد"}<br><br>
 
-        <div class="grid-actions three">
-          <button class="card small green" onclick="adminSetOrderStatus('${o.order_id}','approved')">approved</button>
-          <button class="card small orange" onclick="adminSetOrderStatus('${o.order_id}','paid')">paid</button>
-          <button class="card small" onclick="adminSetOrderStatus('${o.order_id}','sent')">sent</button>
-          <button class="card small" onclick="adminSetOrderStatus('${o.order_id}','done')">done</button>
-          <button class="card small red" onclick="adminSetOrderStatus('${o.order_id}','rejected')">rejected</button>
-        </div>
+        ${renderAdminActions(o)}
 
         <div class="form-group" style="margin-top:12px;">
-          <label>ثبت TXID</label>
-          <input id="txid-${o.order_id}" type="text" placeholder="TXID">
+          <label>ثبت/ویرایش TXID</label>
+          <input id="txid-${o.order_id}" type="text" placeholder="TXID" value="${o.txid || ""}">
           <br><br>
-          <button class="card small" onclick="adminSetTxid('${o.order_id}')">ثبت TXID</button>
+          <button class="card small" onclick="adminSetTxid('${o.order_id}')">ذخیره TXID</button>
         </div>
       </div>
-      `
-    ).join("");
+    `).join("");
 
-    setPanel("مدیریت سفارش‌ها", html);
+    setPanel("مدیریت سفارش‌ها", filters + html);
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در سفارش‌ها");
+    setPanel("خطا", e.message || "خطا");
+  }
+};
+
+function renderAdminActions(o) {
+  if (o.status === "pending_admin") {
+    return `
+      <div class="grid-actions">
+        <button class="card small green" onclick="adminApprove('${o.order_id}')">تأیید</button>
+        <button class="card small red" onclick="adminSetOrderStatus('${o.order_id}','rejected')">رد</button>
+      </div>
+    `;
+  }
+
+  if (o.status === "receipt_submitted" || o.status === "txid_submitted") {
+    return `
+      <div class="grid-actions">
+        <button class="card small green" onclick="adminSetOrderStatus('${o.order_id}','paid')">تأیید</button>
+        <button class="card small red" onclick="adminSetOrderStatus('${o.order_id}','rejected')">رد</button>
+      </div>
+    `;
+  }
+
+  if (o.status === "paid" && o.side === "buy") {
+    return `
+      <div class="grid-actions">
+        <button class="card small orange" onclick="adminSetOrderStatus('${o.order_id}','sent')">ارسال ارز</button>
+        <button class="card small green" onclick="adminSetOrderStatus('${o.order_id}','done')">تکمیل</button>
+      </div>
+    `;
+  }
+
+  if (o.status === "paid" && o.side === "sell") {
+    return `
+      <div class="grid-actions">
+        <button class="card small green" onclick="adminSetOrderStatus('${o.order_id}','done')">تکمیل</button>
+      </div>
+    `;
+  }
+
+  if (o.status === "sent") {
+    return `
+      <div class="grid-actions">
+        <button class="card small green" onclick="adminSetOrderStatus('${o.order_id}','done')">تکمیل</button>
+      </div>
+    `;
+  }
+
+  return "";
+}
+
+window.adminApprove = async function(orderId) {
+  try {
+    await postJSON(`/admin/order/${orderId}/approve`, { admin_id: currentUserId() });
+    alert("سفارش تأیید شد");
+    await adminLoadOrders();
+  } catch (e) {
+    alert(e.message || "خطا");
   }
 };
 
@@ -557,7 +629,7 @@ window.adminSetOrderStatus = async function(orderId, status) {
       admin_id: currentUserId(),
       status
     });
-    alert("وضعیت سفارش تغییر کرد");
+    alert("وضعیت تغییر کرد");
     await adminLoadOrders();
   } catch (e) {
     alert(e.message || "خطا");
@@ -571,12 +643,11 @@ window.adminSetTxid = async function(orderId) {
       alert("TXID را وارد کن");
       return;
     }
-
     await postJSON(`/admin/order/${orderId}/txid`, {
       admin_id: currentUserId(),
       txid
     });
-    alert("TXID ثبت شد");
+    alert("TXID ذخیره شد");
     await adminLoadOrders();
   } catch (e) {
     alert(e.message || "خطا");
@@ -608,23 +679,16 @@ window.adminLoadInventory = async function() {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در موجودی");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
 window.inventoryAdd = async function(asset) {
   try {
     const amount = parseFloat(document.getElementById(`inv-${asset}`).value);
-    if (!amount || amount <= 0) {
-      alert("مقدار معتبر نیست");
-      return;
-    }
-    await postJSON("/admin/inventory/add", {
-      admin_id: currentUserId(),
-      asset_code: asset,
-      amount
-    });
-    alert("موجودی افزایش یافت");
+    if (!amount || amount <= 0) return alert("مقدار معتبر نیست");
+    await postJSON("/admin/inventory/add", { admin_id: currentUserId(), asset_code: asset, amount });
+    alert("افزایش یافت");
     await adminLoadInventory();
   } catch (e) {
     alert(e.message || "خطا");
@@ -634,16 +698,9 @@ window.inventoryAdd = async function(asset) {
 window.inventoryRemove = async function(asset) {
   try {
     const amount = parseFloat(document.getElementById(`inv-${asset}`).value);
-    if (!amount || amount <= 0) {
-      alert("مقدار معتبر نیست");
-      return;
-    }
-    await postJSON("/admin/inventory/remove", {
-      admin_id: currentUserId(),
-      asset_code: asset,
-      amount
-    });
-    alert("موجودی کاهش یافت");
+    if (!amount || amount <= 0) return alert("مقدار معتبر نیست");
+    await postJSON("/admin/inventory/remove", { admin_id: currentUserId(), asset_code: asset, amount });
+    alert("کاهش یافت");
     await adminLoadInventory();
   } catch (e) {
     alert(e.message || "خطا");
@@ -653,16 +710,9 @@ window.inventoryRemove = async function(asset) {
 window.inventorySet = async function(asset) {
   try {
     const amount = parseFloat(document.getElementById(`inv-${asset}`).value);
-    if (amount < 0 || Number.isNaN(amount)) {
-      alert("مقدار معتبر نیست");
-      return;
-    }
-    await postJSON("/admin/inventory/set", {
-      admin_id: currentUserId(),
-      asset_code: asset,
-      amount
-    });
-    alert("موجودی تنظیم شد");
+    if (Number.isNaN(amount) || amount < 0) return alert("مقدار معتبر نیست");
+    await postJSON("/admin/inventory/set", { admin_id: currentUserId(), asset_code: asset, amount });
+    alert("تنظیم شد");
     await adminLoadInventory();
   } catch (e) {
     alert(e.message || "خطا");
@@ -700,7 +750,7 @@ window.adminLoadBanks = async function() {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در بانک‌ها");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
@@ -714,7 +764,7 @@ window.adminAddBank = async function() {
       card_number: document.getElementById("card_number").value.trim(),
       owner_name: document.getElementById("owner_name").value.trim()
     });
-    alert("حساب بانکی اضافه شد");
+    alert("اضافه شد");
     await adminLoadBanks();
   } catch (e) {
     alert(e.message || "خطا");
@@ -723,10 +773,7 @@ window.adminAddBank = async function() {
 
 window.adminDeleteBank = async function(bankId) {
   try {
-    await postJSON("/admin/banks/delete", {
-      admin_id: currentUserId(),
-      bank_id: bankId
-    });
+    await postJSON("/admin/banks/delete", { admin_id: currentUserId(), bank_id: bankId });
     alert("حذف شد");
     await adminLoadBanks();
   } catch (e) {
@@ -769,7 +816,7 @@ window.adminLoadWallets = async function() {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در ولت‌ها");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
@@ -781,7 +828,7 @@ window.adminAddWallet = async function() {
       network: document.getElementById("wallet_network").value.trim(),
       address: document.getElementById("wallet_address").value.trim()
     });
-    alert("ولت اضافه شد");
+    alert("اضافه شد");
     await adminLoadWallets();
   } catch (e) {
     alert(e.message || "خطا");
@@ -790,10 +837,7 @@ window.adminAddWallet = async function() {
 
 window.adminDeleteWallet = async function(walletId) {
   try {
-    await postJSON("/admin/wallets/delete", {
-      admin_id: currentUserId(),
-      wallet_id: walletId
-    });
+    await postJSON("/admin/wallets/delete", { admin_id: currentUserId(), wallet_id: walletId });
     alert("حذف شد");
     await adminLoadWallets();
   } catch (e) {
@@ -818,7 +862,7 @@ window.adminLoadNetworks = async function() {
             <option value="BNB">BNB</option>
           </select>
         </div>
-        <div class="form-group"><label>نام شبکه</label><input id="network_name" placeholder="مثلاً TON"></div>
+        <div class="form-group"><label>نام شبکه</label><input id="network_name"></div>
         <div class="form-group">
           <label>ارز کارمزد</label>
           <select id="fee_asset">
@@ -847,7 +891,7 @@ window.adminLoadNetworks = async function() {
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در شبکه‌ها");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
@@ -860,7 +904,7 @@ window.adminAddNetwork = async function() {
       fee_asset: document.getElementById("fee_asset").value,
       fee_amount: parseFloat(document.getElementById("fee_amount").value)
     });
-    alert("شبکه اضافه شد");
+    alert("اضافه شد");
     await adminLoadNetworks();
   } catch (e) {
     alert(e.message || "خطا");
@@ -872,9 +916,9 @@ window.adminDeleteNetwork = async function(asset, network) {
     await postJSON("/admin/networks/delete", {
       admin_id: currentUserId(),
       asset_code: asset,
-      network: network
+      network
     });
-    alert("شبکه حذف شد");
+    alert("حذف شد");
     await adminLoadNetworks();
   } catch (e) {
     alert(e.message || "خطا");
@@ -890,27 +934,53 @@ window.adminLoadConfig = async function() {
       `
       <div class="list-item">
         <div class="form-group">
-          <label>قیمت دستی تتر (ریال)</label>
+          <label>حالت نرخ تتر</label>
+          <select id="cfg_mode">
+            <option value="manual" ${cfg.usdt_price_mode === "manual" ? "selected" : ""}>دستی</option>
+            <option value="exchange" ${cfg.usdt_price_mode === "exchange" ? "selected" : ""}>صرافی‌ها</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>منبع نرخ صرافی</label>
+          <select id="cfg_source">
+            <option value="auto" ${cfg.usdt_exchange_source === "auto" ? "selected" : ""}>خودکار</option>
+            <option value="nobitex" ${cfg.usdt_exchange_source === "nobitex" ? "selected" : ""}>Nobitex</option>
+            <option value="wallex" ${cfg.usdt_exchange_source === "wallex" ? "selected" : ""}>Wallex</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>نرخ دستی تتر (ریال)</label>
           <input id="cfg_usdt" type="number" step="any" value="${cfg.usdt_manual_price_irr}">
         </div>
+
+        <div class="form-group">
+          <label>آخرین نرخ کش‌شده</label>
+          <input type="text" disabled value="${cfg.usdt_cached_price_irr || "-"} | ${cfg.usdt_cached_at || "-"}">
+        </div>
+
         <div class="form-group">
           <label>سود خرید (%)</label>
           <input id="cfg_buy" type="number" step="any" value="${cfg.my_profit_percent_buy}">
         </div>
+
         <div class="form-group">
           <label>سود فروش (%)</label>
           <input id="cfg_sell" type="number" step="any" value="${cfg.my_profit_percent_sell}">
         </div>
+
         <div class="form-group">
           <label>مارک‌آپ بایننس (%)</label>
           <input id="cfg_markup" type="number" step="any" value="${cfg.binance_markup_percent}">
         </div>
+
         <button class="card small green" onclick="adminSaveConfig()">ذخیره تنظیمات</button>
       </div>
       `
     );
   } catch (e) {
-    setPanel("خطا", e.message || "خطا در تنظیمات");
+    setPanel("خطا", e.message || "خطا");
   }
 };
 
@@ -918,12 +988,14 @@ window.adminSaveConfig = async function() {
   try {
     await postJSON("/admin/config/update", {
       admin_id: currentUserId(),
+      usdt_price_mode: document.getElementById("cfg_mode").value,
+      usdt_exchange_source: document.getElementById("cfg_source").value,
       usdt_manual_price_irr: parseFloat(document.getElementById("cfg_usdt").value),
       my_profit_percent_buy: parseFloat(document.getElementById("cfg_buy").value),
       my_profit_percent_sell: parseFloat(document.getElementById("cfg_sell").value),
       binance_markup_percent: parseFloat(document.getElementById("cfg_markup").value)
     });
-    alert("تنظیمات ذخیره شد");
+    alert("ذخیره شد");
     await adminLoadConfig();
   } catch (e) {
     alert(e.message || "خطا");

@@ -1,8 +1,14 @@
 {
+  "usdt_price_mode": "exchange",
+  "usdt_exchange_source": "auto",
   "usdt_manual_price_irr": 700000,
+  "usdt_cached_price_irr": 700000,
+  "usdt_cached_at": null,
+
   "my_profit_percent_buy": 2,
   "my_profit_percent_sell": 3,
   "binance_markup_percent": 0.2,
+
   "assets": {
     "USDT": {
       "type": "stable",

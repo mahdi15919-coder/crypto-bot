@@ -88,7 +88,7 @@ body {
   cursor: pointer;
   box-shadow: var(--shadow);
   text-align: right;
-  transition: transform .16s ease, border-color .16s ease, opacity .16s ease;
+  transition: transform .16s ease, border-color .16s ease;
   width: 100%;
 }
 
@@ -158,12 +158,6 @@ body {
   cursor: pointer;
 }
 
-.section-title {
-  margin: 0 0 12px;
-  color: var(--text);
-  font-size: 16px;
-}
-
 .list-item {
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
@@ -197,7 +191,7 @@ label {
   color: var(--text);
 }
 
-input, select, textarea {
+input, select {
   width: 100%;
   padding: 12px;
   border-radius: 12px;
@@ -207,7 +201,7 @@ input, select, textarea {
   outline: none;
 }
 
-input::placeholder, textarea::placeholder {
+input::placeholder {
   color: #8393bb;
 }
 
@@ -244,7 +238,6 @@ input::placeholder, textarea::placeholder {
   .cards {
     grid-template-columns: repeat(2, 1fr);
   }
-
   .grid-actions.three {
     grid-template-columns: repeat(2, 1fr);
   }
