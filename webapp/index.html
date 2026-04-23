@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>پنل صرافی</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">Crypto Exchange</div>
+        <h1>پنل خرید و فروش</h1>
+        <p id="welcomeText">در حال بارگذاری...</p>
+      </div>
+    </header>
+
+    <section class="cards">
+      <button class="card" id="showPricesBtn">
+        <span class="emoji">💵</span>
+        <span>قیمت تتر</span>
+      </button>
+
+      <button class="card" id="buySellBtn">
+        <span class="emoji">💱</span>
+        <span>خرید / فروش</span>
+      </button>
+
+      <button class="card" id="showOrdersBtn">
+        <span class="emoji">📦</span>
+        <span>سفارش‌های من</span>
+      </button>
+
+      <button class="card" id="showBanksBtn">
+        <span class="emoji">🏦</span>
+        <span>حساب‌های بانکی</span>
+      </button>
+
+      <button class="card" id="showWalletsBtn">
+        <span class="emoji">👛</span>
+        <span>ولت‌ها</span>
+      </button>
+
+      <button class="card" id="adminPanelBtn">
+        <span class="emoji">🛠</span>
+        <span>پنل ادمین</span>
+      </button>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2 id="panelTitle">داشبورد</h2>
+      </div>
+      <div id="panelBody" class="panel-body">
+        آماده‌ست.
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

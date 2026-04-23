@@ -1,0 +1,28 @@
+{
+  "bank_accounts": [
+    {
+      "id": "BANK_6KGTQUOW",
+      "bank_name": "ملت",
+      "account_number": "۱۲۳۴",
+      "sheba": "۱۲۷۸",
+      "card_number": "۶۵۵",
+      "owner_name": "مهدی"
+    },
+    {
+      "id": "BANK_SVEEHDVL",
+      "bank_name": "بلو",
+      "account_number": "۷۷۶۵",
+      "sheba": "۸۸۸۹۹",
+      "card_number": "۵۵۶۷۷",
+      "owner_name": "امیر"
+    }
+  ],
+  "wallet_addresses": [
+    {
+      "id": "WALLET_3EJK90",
+      "asset_code": "USDT",
+      "network": "BEP20",
+      "address": "0x1323c6788108fF2d17816530286fC25c4BF8F88F"
+    }
+  ]
+}

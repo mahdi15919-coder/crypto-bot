@@ -1,0 +1,40 @@
+{
+  "usdt_manual_price_irr": 700000,
+  "my_profit_percent_buy": 2,
+  "my_profit_percent_sell": 3,
+  "binance_markup_percent": 0.2,
+  "assets": {
+    "USDT": {
+      "type": "stable",
+      "display_name": "Tether",
+      "networks": {
+        "TRC20": { "fee_asset": "USDT", "fee_amount": 1.0 },
+        "TON": { "fee_asset": "USDT", "fee_amount": 0.8 }
+      }
+    },
+    "TRX": {
+      "type": "market",
+      "display_name": "Tron",
+      "binance_symbol": "TRXUSDT",
+      "networks": {
+        "TRC20": { "fee_asset": "TRX", "fee_amount": 10 }
+      }
+    },
+    "TON": {
+      "type": "market",
+      "display_name": "Toncoin",
+      "binance_symbol": "TONUSDT",
+      "networks": {
+        "TON": { "fee_asset": "TON", "fee_amount": 0.03 }
+      }
+    },
+    "BNB": {
+      "type": "market",
+      "display_name": "BNB",
+      "binance_symbol": "BNBUSDT",
+      "networks": {
+        "BEP20": { "fee_asset": "BNB", "fee_amount": 0.0005 }
+      }
+    }
+  }
+}
