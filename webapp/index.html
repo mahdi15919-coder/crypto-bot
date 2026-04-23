@@ -12,12 +12,13 @@
     <header class="hero">
       <div>
         <div class="eyebrow">Crypto Exchange</div>
-        <h1>پنل خرید و فروش</h1>
+        <h1>پنل خرید و فروش ارز</h1>
         <p id="welcomeText">در حال بارگذاری...</p>
       </div>
+      <div class="hero-badge" id="userBadge">USER</div>
     </header>
 
-    <section class="cards">
+    <section class="cards" id="mainCards">
       <button class="card" id="showPricesBtn">
         <span class="emoji">💵</span>
         <span>قیمت تتر</span>
@@ -43,7 +44,7 @@
         <span>ولت‌ها</span>
       </button>
 
-      <button class="card" id="adminPanelBtn">
+      <button class="card admin-only" id="adminPanelBtn">
         <span class="emoji">🛠</span>
         <span>پنل ادمین</span>
       </button>
@@ -52,6 +53,7 @@
     <section class="panel">
       <div class="panel-header">
         <h2 id="panelTitle">داشبورد</h2>
+        <button class="ghost-btn" id="homeBtn">خانه</button>
       </div>
       <div id="panelBody" class="panel-body">
         آماده‌ست.

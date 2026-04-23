@@ -31,7 +31,12 @@ BINANCE_BASE_URLS = [
 ]
 
 ASSET_CODES = ["USDT", "TRX", "TON", "BNB"]
+ADMIN_ID = 5869677184
 
+
+# =========================================================
+# helpers
+# =========================================================
 
 def load_json(path: str, default: Any) -> Any:
     try:
@@ -51,10 +56,24 @@ def generate_id(length: int = 8) -> str:
     return "".join(random.choices(chars, k=length))
 
 
+def generate_prefixed_id(prefix: str, length: int = 6) -> str:
+    chars = string.ascii_uppercase + string.digits
+    return prefix + "".join(random.choices(chars, k=length))
+
+
+def ensure_admin(admin_id: int) -> None:
+    if int(admin_id) != ADMIN_ID:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
 def format_float(value: float, max_decimals: int = 8) -> str:
     s = f"{value:.{max_decimals}f}".rstrip("0").rstrip(".")
     return s if s else "0"
 
+
+# =========================================================
+# pricing logic
+# =========================================================
 
 def get_usdt_buy_sell_prices(config: Dict[str, Any]) -> Dict[str, float]:
     manual = float(config["usdt_manual_price_irr"])
@@ -156,6 +175,10 @@ def calculate_order(asset_code: str, network: str, amount: float, side: str, con
         "total_irr": total,
     }
 
+
+# =========================================================
+# user endpoints
+# =========================================================
 
 @app.get("/health")
 def health():
@@ -377,51 +400,378 @@ def get_wallet_for_order(order_id: str):
     }
 
 
-@app.get("/admin/summary")
-def admin_summary(admin_id: int = Query(...)):
-    if admin_id != 5869677184:
-        raise HTTPException(status_code=403, detail="forbidden")
+# =========================================================
+# admin endpoints
+# =========================================================
+
+@app.get("/admin/dashboard")
+def admin_dashboard(admin_id: int = Query(...)):
+    ensure_admin(admin_id)
 
     orders = load_json(ORDERS_FILE, [])
     inventory = load_json(INVENTORY_FILE, {})
     payment = load_json(PAYMENT_INFO_FILE, {"bank_accounts": [], "wallet_addresses": []})
+    config = load_json(CONFIG_FILE, {})
 
-    pending = [o for o in orders if o.get("status") in ["pending", "waiting_bank_selection", "waiting_receipt", "wallet_sent", "receipt_submitted", "paid", "sent"]]
+    active_statuses = {"pending", "waiting_bank_selection", "waiting_receipt", "receipt_submitted", "wallet_sent", "paid", "sent"}
+    active_orders = [o for o in orders if o.get("status") in active_statuses]
+    done_orders = [o for o in orders if o.get("status") == "done"]
+
+    buy_total = 0.0
+    sell_total = 0.0
+
+    for order in done_orders:
+        if order["side"] == "buy":
+            buy_total += float(order["total_irr"])
+        else:
+            sell_total += float(order["total_irr"])
 
     return {
         "order_count": len(orders),
-        "active_order_count": len(pending),
+        "active_order_count": len(active_orders),
+        "done_order_count": len(done_orders),
+        "buy_total_irr": buy_total,
+        "sell_total_irr": sell_total,
         "inventory": inventory,
         "bank_count": len(payment["bank_accounts"]),
         "wallet_count": len(payment["wallet_addresses"]),
+        "config": {
+            "usdt_manual_price_irr": config.get("usdt_manual_price_irr"),
+            "my_profit_percent_buy": config.get("my_profit_percent_buy"),
+            "my_profit_percent_sell": config.get("my_profit_percent_sell"),
+            "binance_markup_percent": config.get("binance_markup_percent"),
+        }
     }
 
 
 @app.get("/admin/orders")
 def admin_orders(admin_id: int = Query(...)):
-    if admin_id != 5869677184:
-        raise HTTPException(status_code=403, detail="forbidden")
-
+    ensure_admin(admin_id)
     orders = load_json(ORDERS_FILE, [])
-    return list(reversed(orders))[:50]
+    return list(reversed(orders))[:100]
 
 
 @app.post("/admin/order/{order_id}/status")
 def admin_change_order_status(order_id: str, data: dict = Body(...)):
-    if int(data.get("admin_id", 0)) != 5869677184:
-        raise HTTPException(status_code=403, detail="forbidden")
+    ensure_admin(int(data.get("admin_id", 0)))
 
     new_status = str(data.get("status", "")).strip()
-    allowed = {"approved", "waiting_bank_selection", "waiting_receipt", "paid", "wallet_sent", "sent", "done", "rejected"}
+    allowed = {
+        "approved", "waiting_bank_selection", "waiting_receipt",
+        "paid", "wallet_sent", "sent", "done", "rejected"
+    }
 
     if new_status not in allowed:
         raise HTTPException(status_code=400, detail="invalid status")
 
     orders = load_json(ORDERS_FILE, [])
+    inventory = load_json(INVENTORY_FILE, {})
+
     for order in orders:
         if order.get("order_id") == order_id:
+            old_status = order.get("status")
+
+            if new_status == "done" and old_status != "done":
+                asset = order["asset_code"]
+                amount = float(order["amount"])
+
+                if order["side"] == "buy":
+                    current = float(inventory.get(asset, 0))
+                    if amount > current:
+                        raise HTTPException(status_code=400, detail=f"موجودی کافی برای {asset} نیست")
+                    inventory[asset] = current - amount
+                else:
+                    inventory[asset] = float(inventory.get(asset, 0)) + amount
+
+                save_json(INVENTORY_FILE, inventory)
+
             order["status"] = new_status
             save_json(ORDERS_FILE, orders)
             return {"ok": True, "order_id": order_id, "status": new_status}
 
     raise HTTPException(status_code=404, detail="order not found")
+
+
+@app.post("/admin/order/{order_id}/txid")
+def admin_set_txid(order_id: str, data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+    txid = str(data.get("txid", "")).strip()
+
+    if not txid:
+        raise HTTPException(status_code=400, detail="txid required")
+
+    orders = load_json(ORDERS_FILE, [])
+    for order in orders:
+        if order.get("order_id") == order_id:
+            order["txid"] = txid
+            save_json(ORDERS_FILE, orders)
+            return {"ok": True, "order_id": order_id, "txid": txid}
+
+    raise HTTPException(status_code=404, detail="order not found")
+
+
+@app.get("/admin/inventory")
+def admin_inventory(admin_id: int = Query(...)):
+    ensure_admin(admin_id)
+    return load_json(INVENTORY_FILE, {"USDT": 0, "TRX": 0, "TON": 0, "BNB": 0})
+
+
+@app.post("/admin/inventory/set")
+def admin_inventory_set(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    asset_code = str(data.get("asset_code", "")).upper()
+    amount = float(data.get("amount", 0))
+
+    if asset_code not in ASSET_CODES:
+        raise HTTPException(status_code=400, detail="invalid asset")
+
+    if amount < 0:
+        raise HTTPException(status_code=400, detail="amount cannot be negative")
+
+    inventory = load_json(INVENTORY_FILE, {"USDT": 0, "TRX": 0, "TON": 0, "BNB": 0})
+    inventory[asset_code] = amount
+    save_json(INVENTORY_FILE, inventory)
+
+    return {"ok": True, "inventory": inventory}
+
+
+@app.post("/admin/inventory/add")
+def admin_inventory_add(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    asset_code = str(data.get("asset_code", "")).upper()
+    amount = float(data.get("amount", 0))
+
+    if asset_code not in ASSET_CODES:
+        raise HTTPException(status_code=400, detail="invalid asset")
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be positive")
+
+    inventory = load_json(INVENTORY_FILE, {"USDT": 0, "TRX": 0, "TON": 0, "BNB": 0})
+    inventory[asset_code] = float(inventory.get(asset_code, 0)) + amount
+    save_json(INVENTORY_FILE, inventory)
+
+    return {"ok": True, "inventory": inventory}
+
+
+@app.post("/admin/inventory/remove")
+def admin_inventory_remove(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    asset_code = str(data.get("asset_code", "")).upper()
+    amount = float(data.get("amount", 0))
+
+    if asset_code not in ASSET_CODES:
+        raise HTTPException(status_code=400, detail="invalid asset")
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be positive")
+
+    inventory = load_json(INVENTORY_FILE, {"USDT": 0, "TRX": 0, "TON": 0, "BNB": 0})
+    current = float(inventory.get(asset_code, 0))
+
+    if amount > current:
+        raise HTTPException(status_code=400, detail="موجودی کافی نیست")
+
+    inventory[asset_code] = current - amount
+    save_json(INVENTORY_FILE, inventory)
+
+    return {"ok": True, "inventory": inventory}
+
+
+@app.get("/admin/config")
+def admin_get_config(admin_id: int = Query(...)):
+    ensure_admin(admin_id)
+    config = load_json(CONFIG_FILE, {})
+    return {
+        "usdt_manual_price_irr": config["usdt_manual_price_irr"],
+        "my_profit_percent_buy": config["my_profit_percent_buy"],
+        "my_profit_percent_sell": config["my_profit_percent_sell"],
+        "binance_markup_percent": config["binance_markup_percent"],
+        "assets": config["assets"],
+    }
+
+
+@app.post("/admin/config/update")
+def admin_update_config(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    config = load_json(CONFIG_FILE, {})
+
+    if "usdt_manual_price_irr" in data:
+        config["usdt_manual_price_irr"] = float(data["usdt_manual_price_irr"])
+
+    if "my_profit_percent_buy" in data:
+        config["my_profit_percent_buy"] = float(data["my_profit_percent_buy"])
+
+    if "my_profit_percent_sell" in data:
+        config["my_profit_percent_sell"] = float(data["my_profit_percent_sell"])
+
+    if "binance_markup_percent" in data:
+        config["binance_markup_percent"] = float(data["binance_markup_percent"])
+
+    save_json(CONFIG_FILE, config)
+    return {"ok": True, "config": config}
+
+
+@app.get("/admin/banks")
+def admin_get_banks(admin_id: int = Query(...)):
+    ensure_admin(admin_id)
+    payment = load_json(PAYMENT_INFO_FILE, {"bank_accounts": [], "wallet_addresses": []})
+    return payment["bank_accounts"]
+
+
+@app.post("/admin/banks/add")
+def admin_add_bank(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    bank_name = str(data.get("bank_name", "")).strip()
+    account_number = str(data.get("account_number", "")).strip()
+    sheba = str(data.get("sheba", "")).strip()
+    card_number = str(data.get("card_number", "")).strip()
+    owner_name = str(data.get("owner_name", "")).strip()
+
+    if not all([bank_name, account_number, sheba, card_number, owner_name]):
+        raise HTTPException(status_code=400, detail="all fields are required")
+
+    payment = load_json(PAYMENT_INFO_FILE, {"bank_accounts": [], "wallet_addresses": []})
+    bank = {
+        "id": generate_prefixed_id("BANK_"),
+        "bank_name": bank_name,
+        "account_number": account_number,
+        "sheba": sheba,
+        "card_number": card_number,
+        "owner_name": owner_name,
+    }
+    payment["bank_accounts"].append(bank)
+    save_json(PAYMENT_INFO_FILE, payment)
+
+    return {"ok": True, "bank": bank}
+
+
+@app.post("/admin/banks/delete")
+def admin_delete_bank(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+    bank_id = str(data.get("bank_id", "")).strip()
+
+    payment = load_json(PAYMENT_INFO_FILE, {"bank_accounts": [], "wallet_addresses": []})
+    old_len = len(payment["bank_accounts"])
+    payment["bank_accounts"] = [b for b in payment["bank_accounts"] if b["id"] != bank_id]
+    save_json(PAYMENT_INFO_FILE, payment)
+
+    return {"ok": len(payment["bank_accounts"]) != old_len}
+
+
+@app.get("/admin/wallets")
+def admin_get_wallets(admin_id: int = Query(...)):
+    ensure_admin(admin_id)
+    payment = load_json(PAYMENT_INFO_FILE, {"bank_accounts": [], "wallet_addresses": []})
+    return payment["wallet_addresses"]
+
+
+@app.post("/admin/wallets/add")
+def admin_add_wallet(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    asset_code = str(data.get("asset_code", "")).upper()
+    network = str(data.get("network", "")).upper()
+    address = str(data.get("address", "")).strip()
+
+    if asset_code not in ASSET_CODES:
+        raise HTTPException(status_code=400, detail="invalid asset")
+
+    if not network or not address:
+        raise HTTPException(status_code=400, detail="network and address are required")
+
+    payment = load_json(PAYMENT_INFO_FILE, {"bank_accounts": [], "wallet_addresses": []})
+    wallet = {
+        "id": generate_prefixed_id("WALLET_"),
+        "asset_code": asset_code,
+        "network": network,
+        "address": address,
+    }
+    payment["wallet_addresses"].append(wallet)
+    save_json(PAYMENT_INFO_FILE, payment)
+
+    return {"ok": True, "wallet": wallet}
+
+
+@app.post("/admin/wallets/delete")
+def admin_delete_wallet(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+    wallet_id = str(data.get("wallet_id", "")).strip()
+
+    payment = load_json(PAYMENT_INFO_FILE, {"bank_accounts": [], "wallet_addresses": []})
+    old_len = len(payment["wallet_addresses"])
+    payment["wallet_addresses"] = [w for w in payment["wallet_addresses"] if w["id"] != wallet_id]
+    save_json(PAYMENT_INFO_FILE, payment)
+
+    return {"ok": len(payment["wallet_addresses"]) != old_len}
+
+
+@app.get("/admin/networks")
+def admin_get_networks(admin_id: int = Query(...)):
+    ensure_admin(admin_id)
+    config = load_json(CONFIG_FILE, {})
+    return config["assets"]
+
+
+@app.post("/admin/networks/add")
+def admin_add_network(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    asset_code = str(data.get("asset_code", "")).upper()
+    network = str(data.get("network", "")).upper()
+    fee_asset = str(data.get("fee_asset", "")).upper()
+    fee_amount = float(data.get("fee_amount", 0))
+
+    config = load_json(CONFIG_FILE, {})
+
+    if asset_code not in config["assets"]:
+        raise HTTPException(status_code=400, detail="invalid asset")
+
+    if fee_asset not in ASSET_CODES:
+        raise HTTPException(status_code=400, detail="invalid fee_asset")
+
+    if not network:
+        raise HTTPException(status_code=400, detail="network required")
+
+    if fee_amount < 0:
+        raise HTTPException(status_code=400, detail="invalid fee_amount")
+
+    if network in config["assets"][asset_code]["networks"]:
+        raise HTTPException(status_code=400, detail="network already exists")
+
+    config["assets"][asset_code]["networks"][network] = {
+        "fee_asset": fee_asset,
+        "fee_amount": fee_amount,
+    }
+    save_json(CONFIG_FILE, config)
+
+    return {"ok": True, "assets": config["assets"]}
+
+
+@app.post("/admin/networks/delete")
+def admin_delete_network(data: dict = Body(...)):
+    ensure_admin(int(data.get("admin_id", 0)))
+
+    asset_code = str(data.get("asset_code", "")).upper()
+    network = str(data.get("network", "")).upper()
+
+    config = load_json(CONFIG_FILE, {})
+
+    if asset_code not in config["assets"]:
+        raise HTTPException(status_code=400, detail="invalid asset")
+
+    if network not in config["assets"][asset_code]["networks"]:
+        raise HTTPException(status_code=404, detail="network not found")
+
+    if len(config["assets"][asset_code]["networks"]) <= 1:
+        raise HTTPException(status_code=400, detail="آخرین شبکه را نمی‌شود حذف کرد")
+
+    del config["assets"][asset_code]["networks"][network]
+    save_json(CONFIG_FILE, config)
+
+    return {"ok": True, "assets": config["assets"]}
