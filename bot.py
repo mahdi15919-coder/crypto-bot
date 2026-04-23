@@ -20,7 +20,7 @@ from telegram.ext import (
     filters,
 )
 
-TOKEN = os.getenv("6651322898:AAHMYTqY7S38AmaygN7EgZwWz2yQCvdz3ig", "")
+TOKEN = "6651322898:AAHMYTqY7S38AmaygN7EgZwWz2yQCvdz3ig"
 API_BASE = os.getenv("API_BASE", "https://crypto-bot-api-atmh.onrender.com")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://crypto-bot-three-ruby.vercel.app/index.html")
 ADMIN_ID = 5869677184

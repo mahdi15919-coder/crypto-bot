@@ -1,5 +1,5 @@
 {
-  "usdt_price_mode": "exchange",
+  "usdt_price_mode": "manual",
   "usdt_exchange_source": "auto",
   "usdt_manual_price_irr": 700000,
   "usdt_cached_price_irr": 700000,
