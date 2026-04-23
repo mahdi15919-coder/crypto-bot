@@ -4,7 +4,7 @@ if (tg) {
   tg.expand();
 }
 
-const API_BASE = "https://YOUR-DOMAIN.com";
+const API_BASE = "https://crypto-bot-api-atmh.onrender.com";
 const ADMIN_ID = 5869677184;
 
 const welcomeText = document.getElementById("welcomeText");

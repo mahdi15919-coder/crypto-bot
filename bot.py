@@ -26,7 +26,7 @@ TOKEN = "6651322898:AAHMYTqY7S38AmaygN7EgZwWz2yQCvdz3ig"
 ADMIN_ID = 5869677184
 
 # آدرس Mini App
-WEBAPP_URL = "https://YOUR-DOMAIN.com/webapp/index.html"
+WEBAPP_URL = "https://crypto-bot-three-ruby.vercel.app/index.html"
 
 CONFIG_FILE = "config.json"
 ORDERS_FILE = "orders.json"
